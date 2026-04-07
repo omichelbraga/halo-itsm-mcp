@@ -146,17 +146,7 @@ async function startHttp(client: HaloClient, config: HaloConfig): Promise<void> 
   const transports: Record<string, StreamableHTTPServerTransport> = {};
 
   app.get("/health", (_req: Request, res: Response) => {
-    res.json({
-      status: "ok",
-      server: "halo-itsm-mcp",
-      version: "1.0.0",
-      auth: "env",
-      instance: config.baseUrl,
-      authenticated: client.isAuthenticated(),
-      rateLimit: client.getRateLimitStatus(),
-      activeSessions: Object.keys(transports).length,
-      uptime: process.uptime(),
-    });
+    res.json({ status: "ok" });
   });
 
   setupMcpRoutes(app, transports, (req, res) => {
@@ -242,16 +232,7 @@ async function startHttpWithOAuth(haloBaseUrl: string): Promise<void> {
 
   // Health check (no auth required)
   app.get("/health", (_req: Request, res: Response) => {
-    res.json({
-      status: "ok",
-      server: "halo-itsm-mcp",
-      version: "1.0.0",
-      auth: "oauth-proxy",
-      instance: haloBaseUrl,
-      publicUrl,
-      activeSessions: Object.keys(transports).length,
-      uptime: process.uptime(),
-    });
+    res.json({ status: "ok" });
   });
 
   // MCP routes with OAuth middleware
