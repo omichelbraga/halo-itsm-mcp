@@ -14,8 +14,9 @@ Built by the City of San Marcos, CA - IT Division.
 - **Rate limiting**: 700 requests per 5-minute sliding window with 80% usage warnings
 - **Circuit breaker**: pauses requests after 5 consecutive failures (30-second cooldown)
 - **Retry logic**: exponential backoff with jitter for 429 and 5xx responses
-- **Docker-ready**: multi-stage build, non-root user, health check endpoint
+- **Docker-ready**: multi-stage build, non-root user, health check endpoint, read-only filesystem, resource limits
 - **Reverse proxy compatible**: runs plain HTTP internally, TLS handled externally
+- **Security hardened**: security headers on all responses, input size validation, fetch timeouts, error sanitization, secret redaction in logs
 
 ## Supported Resource Domains
 
@@ -54,7 +55,7 @@ Built by the City of San Marcos, CA - IT Division.
 ### 1. Clone and install
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/omichelbraga/halo-itsm-mcp.git
 cd halo-itsm-mcp
 npm install
 npm run build
@@ -219,7 +220,7 @@ docker run -d \
 docker compose up -d
 ```
 
-The container runs as a non-root user, exposes port 3000, and includes a health check at `/health`.
+The container runs as a non-root user, exposes port 3000, and includes a health check at `/health`. Docker Compose also enforces a read-only filesystem, `no-new-privileges` security option, and resource limits (1 CPU / 512MB memory).
 
 ### Behind a Reverse Proxy
 
@@ -464,6 +465,63 @@ Verify the MCP Endpoint URL includes `/mcp` at the end (e.g., `https://your-url.
 
 **Token expires during long sessions**
 The server caches tokens and refreshes them 60 seconds before expiry. For OAuth proxy mode, the MCP client handles token refresh via the standard OAuth refresh flow.
+
+## Security
+
+### Transport
+
+The server runs plain HTTP internally. **TLS must be terminated by a reverse proxy** (nginx, Caddy, Traefik, etc.) in production. Set `MCP_PUBLIC_URL` to your external `https://` URL so OAuth metadata and redirects resolve correctly.
+
+### Security Headers
+
+All HTTP responses include the following headers:
+
+| Header | Value |
+|--------|-------|
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Content-Security-Policy` | `default-src 'none'; frame-ancestors 'none'` |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` |
+
+### Input Validation
+
+- All tool inputs are validated with Zod schemas before reaching the Halo API
+- String parameters enforce maximum length limits (50-2000 characters depending on field)
+- Array filter parameters are capped at 100 items
+- Upsert data objects are limited to 512KB when serialized
+- Request bodies are limited to 1MB via Express middleware
+
+### Timeouts and Resilience
+
+- All outbound fetch calls to Halo enforce a 10-15 second timeout via `AbortController`
+- Rate limiter, circuit breaker, and retry logic protect against API overuse (see [Rate Limiting and Resilience](#rate-limiting-and-resilience))
+
+### Secret Handling
+
+- Client secrets captured during OAuth flows are stored with a 5-minute TTL and auto-cleaned
+- The logger redacts 15+ sensitive field patterns (tokens, secrets, passwords, API keys) in both snake_case and camelCase
+- Error messages returned to clients are sanitized; detailed error information is only written to server-side logs
+- The `.env` file is excluded from both git and Docker builds
+
+### Docker Hardening
+
+The Docker Compose configuration enforces:
+
+- **Non-root user** (`mcp:mcp`)
+- **Read-only filesystem** with tmpfs for `/tmp`
+- **`no-new-privileges`** security option
+- **Resource limits**: 1 CPU / 512MB memory
+- **Health check** at `/health`
+
+### URL Validation
+
+`HALO_BASE_URL` is validated at startup to ensure it is a well-formed `http://` or `https://` URL. Invalid URLs cause an immediate exit with a descriptive error.
+
+### Reporting Vulnerabilities
+
+If you discover a security vulnerability, please open an issue at [github.com/omichelbraga/halo-itsm-mcp/issues](https://github.com/omichelbraga/halo-itsm-mcp/issues).
 
 ## License
 
