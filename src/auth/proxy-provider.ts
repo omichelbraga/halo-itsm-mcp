@@ -40,25 +40,41 @@ interface PendingAuthorization {
 
 // ==================== IN-MEMORY STORES ====================
 
+const STORE_TTL_MS = 5 * 60 * 1000; // 5 minutes for all transient stores
+const MAX_PENDING_CODES = 1000;       // Hard cap to prevent memory exhaustion
+
 // Pending authorization codes (short-lived, 5 min TTL)
 const pendingCodes = new Map<string, PendingAuthorization>();
 
 // Captured client secrets from token requests (keyed by client_id)
 // This is needed because the SDK's authenticateClient middleware
 // doesn't forward the raw client_secret to exchangeAuthorizationCode.
-const capturedSecrets = new Map<string, string>();
+const capturedSecrets = new Map<string, { secret: string; createdAt: number }>();
 
 // Auto-generated PKCE code_verifiers for non-PKCE clients like n8n
 // Keyed by client_id. When a client doesn't send code_challenge,
 // we generate PKCE params server-side to satisfy the MCP SDK's requirement.
-const generatedPkce = new Map<string, string>();
+const generatedPkce = new Map<string, { verifier: string; createdAt: number }>();
 
-// Clean up expired codes every 60 seconds
+// Clean up expired entries every 60 seconds across all stores
 setInterval(() => {
   const now = Date.now();
+
   for (const [code, pending] of pendingCodes) {
-    if (now - pending.createdAt > 5 * 60 * 1000) {
+    if (now - pending.createdAt > STORE_TTL_MS) {
       pendingCodes.delete(code);
+    }
+  }
+
+  for (const [id, entry] of capturedSecrets) {
+    if (now - entry.createdAt > STORE_TTL_MS) {
+      capturedSecrets.delete(id);
+    }
+  }
+
+  for (const [id, entry] of generatedPkce) {
+    if (now - entry.createdAt > STORE_TTL_MS) {
+      generatedPkce.delete(id);
     }
   }
 }, 60_000);
@@ -120,7 +136,7 @@ export function captureClientSecret() {
   return (req: { body?: Record<string, unknown> }, _res: unknown, next: () => void) => {
     const body = req.body;
     if (body && typeof body.client_id === "string" && typeof body.client_secret === "string") {
-      capturedSecrets.set(body.client_id, body.client_secret);
+      capturedSecrets.set(body.client_id, { secret: body.client_secret, createdAt: Date.now() });
       logger.debug("Captured client secret for token exchange", { clientId: body.client_id });
     }
     next();
@@ -177,7 +193,7 @@ export function injectPkceIfMissing() {
       // Store the code_verifier keyed by client_id for later injection into /token
       const clientId = query.client_id as string;
       if (clientId) {
-        generatedPkce.set(clientId, codeVerifier);
+        generatedPkce.set(clientId, { verifier: codeVerifier, createdAt: Date.now() });
         logger.info("Auto-generated PKCE for non-PKCE client", { clientId });
       }
     }
@@ -193,9 +209,9 @@ export function injectPkceVerifier() {
   return (req: { body?: Record<string, unknown> }, _res: unknown, next: () => void) => {
     const body = req.body;
     if (body && typeof body.client_id === "string" && !body.code_verifier) {
-      const storedVerifier = generatedPkce.get(body.client_id);
-      if (storedVerifier) {
-        body.code_verifier = storedVerifier;
+      const stored = generatedPkce.get(body.client_id);
+      if (stored) {
+        body.code_verifier = stored.verifier;
         generatedPkce.delete(body.client_id);
         logger.debug("Injected auto-generated code_verifier for token exchange", { clientId: body.client_id });
       }
@@ -229,6 +245,12 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
 
       // Dynamically allow this redirect_uri for future requests from any client
       clientsStore.addRedirectUri(params.redirectUri);
+
+      // Prevent memory exhaustion from abandoned authorization flows
+      if (pendingCodes.size >= MAX_PENDING_CODES) {
+        logger.warn("Pending codes map at capacity, rejecting authorization request");
+        throw new Error("Server is busy. Please try again later.");
+      }
 
       pendingCodes.set(code, {
         clientId: client.client_id,
@@ -286,9 +308,10 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
       pendingCodes.delete(authorizationCode);
 
       const clientId = pending.clientId;
-      const clientSecret = capturedSecrets.get(clientId);
+      const captured = capturedSecrets.get(clientId);
+      const clientSecret = captured?.secret;
 
-      // Clean up the captured secret
+      // Clean up the captured secret immediately after retrieval
       capturedSecrets.delete(clientId);
 
       if (!clientSecret) {
@@ -307,11 +330,25 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
         scope: pending.scopes.join(" ") || "all",
       });
 
-      const response = await fetch(tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: body.toString(),
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+
+      let response: globalThis.Response;
+      try {
+        response = await fetch(tokenUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: body.toString(),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        clearTimeout(timeout);
+        if (err instanceof Error && err.name === "AbortError") {
+          throw new Error("Token exchange timed out. The Halo server may be unresponsive.");
+        }
+        throw err;
+      }
+      clearTimeout(timeout);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -319,7 +356,7 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
           status: response.status,
           error: errorText,
         });
-        throw new Error(`Halo token request failed (${response.status}): ${errorText}`);
+        throw new Error("Token exchange failed. Please verify your Halo credentials.");
       }
 
       const tokenData = await response.json() as Record<string, unknown>;
@@ -348,7 +385,7 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
       scopes?: string[],
       _resource?: URL
     ): Promise<OAuthTokens> {
-      const clientSecret = capturedSecrets.get(client.client_id);
+      const clientSecret = capturedSecrets.get(client.client_id)?.secret;
 
       // Try refresh_token grant first
       if (clientSecret) {
@@ -360,11 +397,16 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
           scope: scopes?.join(" ") || "all",
         });
 
+        const refreshCtrl = new AbortController();
+        const refreshTimeout = setTimeout(() => refreshCtrl.abort(), 15_000);
+
         const response = await fetch(tokenUrl, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: body.toString(),
+          signal: refreshCtrl.signal,
         });
+        clearTimeout(refreshTimeout);
 
         if (response.ok) {
           const tokenData = await response.json() as Record<string, unknown>;
@@ -387,11 +429,16 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
           scope: scopes?.join(" ") || "all",
         });
 
+        const fallbackCtrl = new AbortController();
+        const fallbackTimeout = setTimeout(() => fallbackCtrl.abort(), 15_000);
+
         const fallbackResponse = await fetch(tokenUrl, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: fallbackBody.toString(),
+          signal: fallbackCtrl.signal,
         });
+        clearTimeout(fallbackTimeout);
 
         if (fallbackResponse.ok) {
           const tokenData = await fallbackResponse.json() as Record<string, unknown>;
@@ -412,9 +459,23 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
      * Verify an access token by calling Halo's API.
      */
     async verifyAccessToken(token: string): Promise<AuthInfo> {
-      const response = await fetch(`${haloBaseUrl}/api/Agent/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const verifyCtrl = new AbortController();
+      const verifyTimeout = setTimeout(() => verifyCtrl.abort(), 10_000);
+
+      let response: globalThis.Response;
+      try {
+        response = await fetch(`${haloBaseUrl}/api/Agent/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: verifyCtrl.signal,
+        });
+      } catch (err) {
+        clearTimeout(verifyTimeout);
+        if (err instanceof Error && err.name === "AbortError") {
+          throw new Error("Token verification timed out");
+        }
+        throw err;
+      }
+      clearTimeout(verifyTimeout);
 
       if (!response.ok) {
         throw new Error("Invalid or expired Halo access token");

@@ -34,7 +34,29 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import { z } from "zod";
-import { loadConfig, type HaloConfig } from "./types/config.js";
+
+// ==================== SECURITY HEADERS ====================
+
+/**
+ * Middleware that sets security headers on every response.
+ * Defence-in-depth: the reverse proxy should also set these,
+ * but we add them here in case the proxy misses any.
+ */
+function securityHeaders(): express.RequestHandler {
+  return (_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-XSS-Protection", "0"); // Modern best practice: rely on CSP, disable legacy XSS filter
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    // HSTS is only meaningful over HTTPS — the reverse proxy should set this,
+    // but we add it so it's present if the proxy forwards the header through.
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    next();
+  };
+}
+import { loadConfig, validateUrl, type HaloConfig } from "./types/config.js";
 import { HaloClient } from "./client/halo-client.js";
 import {
   createHaloOAuthProvider,
@@ -119,6 +141,8 @@ async function startHttp(client: HaloClient, config: HaloConfig): Promise<void> 
   const port = parseInt(process.env.MCP_PORT || "3000", 10);
   const app = createMcpExpressApp({ host: "0.0.0.0" });
   app.set("trust proxy", 1);
+  app.use(securityHeaders());
+  app.use(express.json({ limit: "1mb" }) as express.RequestHandler);
   const transports: Record<string, StreamableHTTPServerTransport> = {};
 
   app.get("/health", (_req: Request, res: Response) => {
@@ -164,6 +188,8 @@ async function startHttpWithOAuth(haloBaseUrl: string): Promise<void> {
 
   // Trust reverse proxy (ngrok, nginx, etc.) so X-Forwarded-For works correctly
   app.set("trust proxy", 1);
+  app.use(securityHeaders());
+  app.use(express.json({ limit: "1mb" }) as express.RequestHandler);
 
   // Custom OAuth server: bridges Claude's Authorization Code flow to Halo's Client Credentials
   const oauthProvider = createHaloOAuthProvider(haloBaseUrl);
@@ -375,6 +401,12 @@ async function main(): Promise<void> {
     const baseUrl = process.env.HALO_BASE_URL;
     if (!baseUrl) {
       process.stderr.write("HALO_BASE_URL environment variable is required for OAuth mode.\n");
+      process.exit(1);
+    }
+    try {
+      validateUrl(baseUrl, "HALO_BASE_URL");
+    } catch (err) {
+      process.stderr.write(`${(err as Error).message}\n`);
       process.exit(1);
     }
     setLogLevel((process.env.LOG_LEVEL as HaloConfig["logLevel"]) || "info");

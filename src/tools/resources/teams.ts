@@ -13,9 +13,9 @@ export const teamsConfig: ResourceConfig = {
   readPermission: "Agent",
   writePermission: "Agent",
   listParams: {
-    type: z.string().optional().describe("Filter by type: 'reqs' (tickets), 'opps' (opportunities), 'prjs' (projects)"),
+    type: z.string().max(50).optional().describe("Filter by type: 'reqs' (tickets), 'opps' (opportunities), 'prjs' (projects)"),
     count: z.number().int().optional().describe("Number of results"),
-    domain: z.string().optional().describe("Filter by domain"),
+    domain: z.string().max(100).optional().describe("Filter by domain"),
     department_id: z.number().int().optional().describe("Filter by department"),
     member_only: z.boolean().optional().describe("Only teams user is a member of"),
     includeagents: z.boolean().optional().describe("Include agent list for each team"),

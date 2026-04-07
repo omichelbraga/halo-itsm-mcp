@@ -15,8 +15,8 @@ export const attachmentsConfig: ResourceConfig = {
   listParams: {
     ticket_id: z.number().int().optional().describe("Filter by ticket ID"),
     action_id: z.number().int().optional().describe("Filter by action ID (requires ticket_id)"),
-    type: z.string().optional().describe("Filter by attachment type"),
-    unique_id: z.string().optional().describe("Filter by unique attachment ID"),
+    type: z.string().max(200).optional().describe("Filter by attachment type"),
+    unique_id: z.string().max(200).optional().describe("Filter by unique attachment ID"),
     includedetails: z.boolean().optional().describe("Include extra objects"),
   },
 };

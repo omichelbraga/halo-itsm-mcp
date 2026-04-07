@@ -14,9 +14,9 @@ export const appointmentsConfig: ResourceConfig = {
   writePermission: "Agent, Calendar Modify / Appointment Modify",
   listParams: {
     showall: z.boolean().optional().describe("Admin override to return all appointments"),
-    start_date: z.string().optional().describe("Filter: start date greater than this (ISO date)"),
-    end_date: z.string().optional().describe("Filter: end date greater than this (ISO date)"),
-    agents: z.string().optional().describe("Comma-separated agent IDs"),
+    start_date: z.string().max(50).optional().describe("Filter: start date greater than this (ISO date)"),
+    end_date: z.string().max(50).optional().describe("Filter: end date greater than this (ISO date)"),
+    agents: z.string().max(500).optional().describe("Comma-separated agent IDs"),
     showholidays: z.boolean().optional().describe("Include holiday appointments"),
     showprojects: z.boolean().optional().describe("Include projects"),
     showchanges: z.boolean().optional().describe("Include change requests"),

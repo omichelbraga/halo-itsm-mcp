@@ -14,6 +14,6 @@ export const itemsConfig: ResourceConfig = {
   writePermission: "Agent, Item Modify",
   listParams: {
     count: z.number().int().optional().describe("Number of results"),
-    include_custom_fields: z.string().optional().describe("Comma-separated custom field IDs"),
+    include_custom_fields: z.string().max(500).optional().describe("Comma-separated custom field IDs"),
   },
 };

@@ -56,7 +56,7 @@ const paginationSchema = {
   page_no: z.number().int().min(1).optional().describe("Page number (default 1)"),
   order: z.string().optional().describe("Field name to sort by"),
   orderdesc: z.boolean().optional().describe("Sort descending (default true)"),
-  search: z.string().optional().describe("Free-text search string"),
+  search: z.string().max(500).optional().describe("Free-text search string"),
   pageinate: z.boolean().optional().default(true).describe("Enable pagination (default true)"),
 };
 
@@ -179,7 +179,10 @@ export function createResourceTools(config: ResourceConfig, client: HaloClient):
   // --- UPSERT (Create or Update) ---
   if (!disabled.includes("upsert")) {
     const upsertSchemaShape: ZodRawShape = {
-      data: z.record(z.unknown()).describe(
+      data: z.record(z.unknown()).refine(
+        (obj) => JSON.stringify(obj).length <= 512_000,
+        { message: "Data object too large (max 512KB when serialized)" }
+      ).describe(
         `The ${config.description} data object. Include 'id' field to update an existing record, omit 'id' to create new.`
       ),
       ...(config.upsertFields || {}),

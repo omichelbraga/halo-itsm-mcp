@@ -5,8 +5,16 @@
  * Tokens are cached in memory and refreshed 60 seconds before expiry.
  */
 
-import { HaloConfig, CachedToken, TokenResponse } from "../types/config.js";
+import { z } from "zod";
+import { HaloConfig, CachedToken } from "../types/config.js";
 import { logger } from "../utils/logger.js";
+
+// Validate the shape of Halo's token response to catch malformed data early
+const TokenResponseSchema = z.object({
+  access_token: z.string().min(1),
+  token_type: z.string().optional(),
+  expires_in: z.number().int().positive(),
+});
 
 const TOKEN_REFRESH_BUFFER_MS = 60_000; // Refresh 60s before expiry
 
@@ -79,11 +87,25 @@ export class HaloAuth {
 
     logger.debug("Requesting new access token", { tokenUrl });
 
-    const response = await fetch(tokenUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString(),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
+    let response: globalThis.Response;
+    try {
+      response = await fetch(tokenUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error("Token request timed out. The Halo server may be unresponsive.");
+      }
+      throw err;
+    }
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const errorBody = await response.text();
@@ -94,7 +116,13 @@ export class HaloAuth {
       throw new Error(`Authentication failed (${response.status}): ${response.statusText}`);
     }
 
-    const data = (await response.json()) as TokenResponse;
+    const raw = await response.json();
+    const parsed = TokenResponseSchema.safeParse(raw);
+    if (!parsed.success) {
+      logger.error("Invalid token response from Halo", { issues: parsed.error.issues });
+      throw new Error("Received malformed token response from Halo");
+    }
+    const data = parsed.data;
 
     this.cachedToken = {
       accessToken: data.access_token,

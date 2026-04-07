@@ -22,6 +22,22 @@ export interface CachedToken {
   expiresAt: number; // Unix timestamp in ms
 }
 
+/**
+ * Validate that a URL is well-formed and uses an allowed protocol.
+ */
+function validateUrl(raw: string, label: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`${label} is not a valid URL: ${raw}`);
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error(`${label} must use http or https (got ${parsed.protocol})`);
+  }
+  return parsed;
+}
+
 export function loadConfig(): HaloConfig {
   const baseUrl = process.env.HALO_BASE_URL;
   const clientId = process.env.HALO_CLIENT_ID;
@@ -30,6 +46,8 @@ export function loadConfig(): HaloConfig {
   if (!baseUrl) throw new Error("HALO_BASE_URL environment variable is required");
   if (!clientId) throw new Error("HALO_CLIENT_ID environment variable is required");
   if (!clientSecret) throw new Error("HALO_CLIENT_SECRET environment variable is required");
+
+  validateUrl(baseUrl, "HALO_BASE_URL");
 
   return {
     baseUrl: baseUrl.replace(/\/+$/, ""),
@@ -40,3 +58,5 @@ export function loadConfig(): HaloConfig {
     logLevel: (process.env.LOG_LEVEL as HaloConfig["logLevel"]) || "info",
   };
 }
+
+export { validateUrl };

@@ -26,9 +26,18 @@ function formatMessage(level: LogLevel, message: string, data?: Record<string, u
   const ts = new Date().toISOString();
   const base = `[${ts}] [${level.toUpperCase()}] ${message}`;
   if (data) {
-    // Redact sensitive fields
+    // Redact sensitive fields (snake_case and camelCase variants)
     const safe = { ...data };
-    for (const key of ["access_token", "client_secret", "password", "token", "authorization"]) {
+    const sensitiveKeys = [
+      "access_token", "accessToken",
+      "refresh_token", "refreshToken",
+      "id_token", "idToken",
+      "client_secret", "clientSecret",
+      "password", "token", "authorization",
+      "secret", "api_key", "apiKey",
+      "bearer", "credential", "credentials",
+    ];
+    for (const key of sensitiveKeys) {
       if (key in safe) safe[key] = "***REDACTED***";
     }
     return `${base} ${JSON.stringify(safe)}`;

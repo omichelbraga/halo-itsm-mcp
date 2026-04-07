@@ -13,9 +13,9 @@ export const statusConfig: ResourceConfig = {
   readPermission: "Agent",
   writePermission: "Admin",
   listParams: {
-    type: z.string().optional().describe("Filter by type: 'ticket', 'opportunity', or 'project'"),
+    type: z.string().max(50).optional().describe("Filter by type: 'ticket', 'opportunity', or 'project'"),
     count: z.number().int().optional().describe("Number of results"),
-    domain: z.string().optional().describe("Filter by domain"),
+    domain: z.string().max(100).optional().describe("Filter by domain"),
     excludepending: z.boolean().optional().describe("Exclude pending statuses"),
     excludeclosed: z.boolean().optional().describe("Exclude closed statuses"),
   },

@@ -44,7 +44,7 @@ export function createAgentsConfig(client: HaloClient): ResourceConfig {
       section_id: z.number().int().optional().describe("Filter by team/section ID"),
       department_id: z.number().int().optional().describe("Filter by department ID"),
       client_id: z.number().int().optional().describe("Filter by client access"),
-      role: z.string().optional().describe("Filter by role"),
+      role: z.string().max(200).optional().describe("Filter by role"),
       includeenabled: z.boolean().optional().describe("Include enabled agents"),
       includedisabled: z.boolean().optional().describe("Include disabled agents"),
       includeunassigned: z.boolean().optional().describe("Include unassigned agent"),

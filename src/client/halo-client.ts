@@ -188,7 +188,7 @@ export class HaloClient {
             return this.request<T>(options, retryCount + 1);
           }
           this.recordFailure();
-          throw new Error("Authentication failed after token refresh. Check HALO_CLIENT_ID and HALO_CLIENT_SECRET.");
+          throw new Error("Authentication failed after token refresh. Check your Halo credentials.");
         }
 
         case 429: {
@@ -215,18 +215,33 @@ export class HaloClient {
           }
           this.recordFailure();
           const errorText = await response.text().catch(() => "");
-          throw new Error(`Halo server error (${response.status}): ${response.statusText}. ${errorText}`.trim());
+          if (errorText) {
+            logger.error("Halo server error details", { status: response.status, responseBody: errorText.substring(0, 1000) });
+          }
+          throw new Error(`Halo server error (${response.status}): ${response.statusText}`);
         }
 
         default: {
           const errorText = await response.text().catch(() => "");
+          // Log full details server-side, return sanitized message to client
+          if (errorText) {
+            logger.error("Halo API error details", {
+              status: response.status,
+              path: options.path,
+              responseBody: errorText.substring(0, 1000),
+            });
+          }
           let errorMessage = `Halo API error (${response.status}): ${response.statusText}`;
           if (errorText) {
             try {
               const errorJson = JSON.parse(errorText);
-              if (errorJson.message) errorMessage += ` - ${errorJson.message}`;
+              if (errorJson.message) {
+                // Sanitize: only include message field, limit length
+                const safeMsg = String(errorJson.message).substring(0, 200);
+                errorMessage += ` - ${safeMsg}`;
+              }
             } catch {
-              if (errorText.length < 500) errorMessage += ` - ${errorText}`;
+              // Don't forward raw error text to client
             }
           }
           throw new Error(errorMessage);

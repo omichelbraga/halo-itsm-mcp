@@ -17,7 +17,7 @@ export const sitesConfig: ResourceConfig = {
     top_level_id: z.number().int().optional().describe("Filter by top-level ID"),
     includeinactive: z.boolean().optional().describe("Include inactive sites"),
     includeactive: z.boolean().optional().describe("Include active sites"),
-    include_custom_fields: z.string().optional().describe("Comma-separated custom field IDs"),
+    include_custom_fields: z.string().max(500).optional().describe("Comma-separated custom field IDs"),
     count: z.number().int().optional().describe("Number of results"),
   },
   getParams: {

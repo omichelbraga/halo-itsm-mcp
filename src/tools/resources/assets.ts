@@ -16,7 +16,7 @@ export const assetsConfig: ResourceConfig = {
     ticket_id: z.number().int().optional().describe("Filter by assets on a ticket"),
     client_id: z.number().int().optional().describe("Filter by client"),
     site_id: z.number().int().optional().describe("Filter by site"),
-    username: z.string().optional().describe("Filter by username"),
+    username: z.string().max(200).optional().describe("Filter by username"),
     assetgroup_id: z.number().int().optional().describe("Filter by asset group"),
     assettype_id: z.number().int().optional().describe("Filter by asset type"),
     linkedto_id: z.number().int().optional().describe("Filter by linked asset"),
