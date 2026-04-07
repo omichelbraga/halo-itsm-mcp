@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  halo-itsm-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: halo-itsm-mcp
+    restart: unless-stopped
+    ports:
+      - "${MCP_PORT:-3000}:3000"
+    environment:
+      # Required
+      - HALO_BASE_URL=${HALO_BASE_URL}
+      # Public URL that the reverse proxy exposes (for OAuth metadata)
+      - MCP_PUBLIC_URL=${MCP_PUBLIC_URL:-https://halo-mcp.yourdomain.com}
+      # Optional
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MCP_TRANSPORT=http
+      - MCP_AUTH=oauth
+      - MCP_PORT=3000
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
