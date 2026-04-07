@@ -181,6 +181,15 @@ async function startHttpWithOAuth(haloBaseUrl: string): Promise<void> {
   app.use(securityHeaders());
   app.use(express.json({ limit: "1mb" }) as express.RequestHandler);
 
+  // Debug: log every incoming request to diagnose auth flow issues
+  app.use(((req: Request, _res: Response, next: () => void) => {
+    logger.debug(`>> ${req.method} ${req.path}`, {
+      contentType: req.headers["content-type"] || "none",
+      hasBody: req.body ? "yes" : "no",
+    });
+    next();
+  }) as RequestHandler);
+
   // Custom OAuth server: bridges Claude's Authorization Code flow to Halo's Client Credentials
   const oauthProvider = createHaloOAuthProvider(haloBaseUrl);
 
