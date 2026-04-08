@@ -1,12 +1,12 @@
 # Halo ITSM MCP Server
 
-A Model Context Protocol (MCP) server that exposes the full Halo ITSM REST API to AI assistants. Provides 85 tools across 21 resource domains, enabling AI-driven IT service management through any MCP-compatible client.
+A Model Context Protocol (MCP) server that exposes the full Halo ITSM REST API to AI assistants. Provides 172 tools across 43 resource domains, enabling AI-driven IT service management through any MCP-compatible client.
 
 Built by the City of San Marcos, CA - IT Division.
 
 ## Features
 
-- **85 tools** across 21 Halo ITSM resource domains (tickets, agents, assets, clients, contracts, knowledge base, and more)
+- **172 tools** across 43 Halo ITSM resource domains (tickets, agents, assets, categories, SLAs, priorities, workflows, services, and more)
 - **6 read-only MCP resources** for configuration context (statuses, teams, agents, ticket types, rate limit status)
 - **Three transport modes**: stdio, HTTP (Streamable HTTP + SSE), HTTP with OAuth proxy
 - **Two authentication modes**: environment-based Client Credentials, or OAuth proxy (credentials passed at connection time)
@@ -26,23 +26,45 @@ Built by the City of San Marcos, CA - IT Division.
 | Actions | list, get, upsert, delete | /Actions |
 | Agents | list, get, upsert, delete, **me** | /Agent |
 | Assets | list, get, upsert, delete | /Asset |
+| Asset Groups | list, get, upsert, delete | /AssetGroup |
+| Asset Types | list, get, upsert, delete | /AssetType |
 | Attachments | list, get, upsert, delete | /Attachment |
 | Appointments | list, get, upsert, delete | /Appointment |
+| Audit | list, get, upsert, delete | /Audit |
+| Canned Text | list, get, upsert, delete | /CannedText |
+| Categories | list, get, upsert, delete | /Category |
 | Clients | list, get, upsert, delete | /Client |
 | Contracts | list, get, upsert, delete | /ClientContract |
+| Downtime | list, get, upsert, delete | /Downtime |
+| Feedback | list, get, upsert, delete | /Feedback |
+| Fields | list, get, upsert, delete | /Field |
+| Holidays | list, get, upsert, delete | /Holiday |
 | Invoices | list, get, upsert, delete | /Invoice |
 | Items | list, get, upsert, delete | /Item |
 | Knowledge Base | list, get, upsert, delete | /KBArticle |
 | Opportunities | list, get, upsert, delete | /Opportunities |
+| Organisations | list, get, upsert, delete | /Organisation |
+| Priorities | list, get, upsert, delete | /Priority |
 | Projects | list, get, upsert, delete | /Projects |
+| Purchase Orders | list, get, upsert, delete | /PurchaseOrder |
 | Quotes | list, get, upsert, delete | /Quotation |
 | Reports | list, get, upsert, delete | /Report |
+| Services | list, get, upsert, delete | /Service |
+| Service Status | list, get, upsert, delete | /ServiceStatus |
 | Sites | list, get, upsert, delete | /Site |
+| SLAs | list, get, upsert, delete | /SLA |
+| Software Licences | list, get, upsert, delete | /SoftwareLicence |
 | Status | list, get, upsert, delete | /Status |
 | Suppliers | list, get, upsert, delete | /Supplier |
+| Tags | list, get, upsert, delete | /Tags |
 | Teams | list, get, upsert, delete | /Team |
+| Ticket Rules | list, get, upsert, delete | /TicketRules |
 | Ticket Types | list, get, upsert, delete | /TicketType |
+| Timesheets | list, get, upsert | /Timesheet |
+| Top Level | list, get, upsert, delete | /TopLevel |
 | Users | list, get, upsert, delete | /Users |
+| Workdays | list, get, upsert, delete | /Workday |
+| Workflows | list, get, upsert, delete | /Workflow |
 
 ## Prerequisites
 
@@ -315,13 +337,13 @@ Common list parameters supported across all domains:
 | `orderdesc` | string | Field to sort descending |
 | `search` | string | Full-text search query |
 
-The `halo_tickets_list` tool supports 50+ additional filter parameters including `open_only`, `unassigned`, `agent_id`, `status_id`, `priority_id`, `client_id`, `site_id`, `category_1`, `dateoccurred_start`, `dateoccurred_end`, and more.
+The `halo_tickets_list` tool supports 50+ additional filter parameters including `open_only`, `agent_id`, `status_id`, `priority_id`, `client_id`, `site_id`, `category_1`, `advanced_search`, and more. The `halo_categories_list` tool supports `type_id` (1-4) to filter by category level.
 
 ## Rate Limiting and Resilience
 
 The server implements multiple layers of protection against API overuse and transient failures:
 
-- **Sliding window rate limiter**: 700 requests per 5-minute window, with console warnings at 80% capacity and automatic request delays when the limit is reached
+- **Sliding window rate limiter**: 700 requests per 5-minute window, with warnings at 80% capacity and automatic request delays when the limit is reached
 - **Circuit breaker**: opens after 5 consecutive API failures, pauses all requests for 30 seconds, then auto-resets
 - **Retry with exponential backoff**: 429 (rate limited) responses retry up to 3 times; 500/502/503 responses retry once. Backoff includes random jitter to prevent thundering herd
 - **Token caching**: access tokens are cached in memory and auto-refreshed 60 seconds before expiry
@@ -364,30 +386,52 @@ halo-itsm-mcp/
 │   ├── resources/
 │   │   └── context.ts              # MCP read-only resources (config, schemas)
 │   ├── tools/
-│   │   ├── registry.ts             # Tool registry (builds and registers all 85 tools)
+│   │   ├── registry.ts             # Tool registry (builds and registers all 172 tools)
 │   │   ├── resource-factory.ts     # Generic CRUD tool factory
-│   │   └── resources/              # 21 resource domain definitions
+│   │   └── resources/              # 43 resource domain definitions
 │   │       ├── tickets.ts          # Ticket management (50+ filter params)
-│   │       ├── actions.ts          # Ticket actions
+│   │       ├── actions.ts          # Ticket actions/notes
 │   │       ├── agents.ts           # Agent management + /Agent/me
 │   │       ├── assets.ts           # IT asset tracking
+│   │       ├── asset-groups.ts     # Asset grouping
+│   │       ├── asset-types.ts      # CMDB asset type definitions
 │   │       ├── attachments.ts      # File attachments
 │   │       ├── appointments.ts     # Scheduling
+│   │       ├── audit.ts            # Audit trail
+│   │       ├── canned-text.ts      # Response templates
+│   │       ├── categories.ts       # Ticket categorization (4 levels)
 │   │       ├── clients.ts          # Client/customer records
 │   │       ├── contracts.ts        # Service contracts
+│   │       ├── downtime.ts         # Maintenance windows
+│   │       ├── feedback.ts         # Customer satisfaction
+│   │       ├── fields.ts           # Custom field definitions
+│   │       ├── holidays.ts         # Holiday schedules
 │   │       ├── invoices.ts         # Billing
 │   │       ├── items.ts            # Catalog items
 │   │       ├── knowledge-base.ts   # KB articles
 │   │       ├── opportunities.ts    # Sales opportunities
+│   │       ├── organisations.ts    # Organizational structure
+│   │       ├── priorities.ts       # Priority levels
 │   │       ├── projects.ts         # Project management
+│   │       ├── purchase-orders.ts  # IT procurement
 │   │       ├── quotes.ts           # Quotes
 │   │       ├── reports.ts          # Reports
+│   │       ├── services.ts         # Service catalog
+│   │       ├── service-status.ts   # Service status page
 │   │       ├── sites.ts            # Locations
+│   │       ├── sla.ts              # Service Level Agreements
+│   │       ├── software-licences.ts # Software license tracking
 │   │       ├── status.ts           # Status configuration
 │   │       ├── suppliers.ts        # Supplier records
+│   │       ├── tags.ts             # Ticket tagging
 │   │       ├── teams.ts            # Team configuration
+│   │       ├── ticket-rules.ts     # Auto-assignment rules
 │   │       ├── ticket-types.ts     # Ticket type configuration
-│   │       └── users.ts            # End-user management
+│   │       ├── timesheets.ts       # Time tracking
+│   │       ├── top-level.ts        # Customer hierarchy
+│   │       ├── users.ts            # End-user management
+│   │       ├── workdays.ts         # Working day definitions
+│   │       └── workflows.ts        # Workflow definitions
 │   ├── types/
 │   │   ├── config.ts               # Configuration interfaces, env loader
 │   │   └── halo.ts                 # Halo API TypeScript type definitions
