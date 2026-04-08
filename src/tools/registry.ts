@@ -1,14 +1,13 @@
 /**
  * Halo ITSM MCP Server - Tool Registry
  *
- * Registers all 21 resource domains and their CRUD tools.
- * Total: 85 tools (21 x 4 CRUD + 1 custom agents_me).
+ * Registers all resource domains and their CRUD tools.
  */
 
 import { HaloClient } from "../client/halo-client.js";
 import { createResourceTools, ToolDefinition } from "./resource-factory.js";
 
-// Resource configs
+// Original resource configs
 import { ticketsConfig } from "./resources/tickets.js";
 import { actionsConfig } from "./resources/actions.js";
 import { createAgentsConfig } from "./resources/agents.js";
@@ -31,6 +30,32 @@ import { suppliersConfig } from "./resources/suppliers.js";
 import { teamsConfig } from "./resources/teams.js";
 import { ticketTypesConfig } from "./resources/ticket-types.js";
 
+// Must-Have additions
+import { categoriesConfig } from "./resources/categories.js";
+import { slaConfig } from "./resources/sla.js";
+import { prioritiesConfig } from "./resources/priorities.js";
+import { workflowsConfig } from "./resources/workflows.js";
+import { assetTypesConfig } from "./resources/asset-types.js";
+import { assetGroupsConfig } from "./resources/asset-groups.js";
+import { softwareLicencesConfig } from "./resources/software-licences.js";
+import { ticketRulesConfig } from "./resources/ticket-rules.js";
+import { organisationsConfig } from "./resources/organisations.js";
+import { topLevelConfig } from "./resources/top-level.js";
+
+// Should-Have additions
+import { timesheetsConfig } from "./resources/timesheets.js";
+import { holidaysConfig } from "./resources/holidays.js";
+import { workdaysConfig } from "./resources/workdays.js";
+import { fieldsConfig } from "./resources/fields.js";
+import { cannedTextConfig } from "./resources/canned-text.js";
+import { tagsConfig } from "./resources/tags.js";
+import { feedbackConfig } from "./resources/feedback.js";
+import { auditConfig } from "./resources/audit.js";
+import { servicesConfig } from "./resources/services.js";
+import { serviceStatusConfig } from "./resources/service-status.js";
+import { purchaseOrdersConfig } from "./resources/purchase-orders.js";
+import { downtimeConfig } from "./resources/downtime.js";
+
 import { logger } from "../utils/logger.js";
 
 /**
@@ -43,6 +68,7 @@ export function buildAllTools(client: HaloClient): Map<string, ToolDefinition> {
   const agentsConfig = createAgentsConfig(client);
 
   const allConfigs = [
+    // Core ITSM
     ticketsConfig,
     actionsConfig,
     agentsConfig,
@@ -64,6 +90,32 @@ export function buildAllTools(client: HaloClient): Map<string, ToolDefinition> {
     suppliersConfig,
     teamsConfig,
     ticketTypesConfig,
+
+    // Must-Have additions
+    categoriesConfig,
+    slaConfig,
+    prioritiesConfig,
+    workflowsConfig,
+    assetTypesConfig,
+    assetGroupsConfig,
+    softwareLicencesConfig,
+    ticketRulesConfig,
+    organisationsConfig,
+    topLevelConfig,
+
+    // Should-Have additions
+    timesheetsConfig,
+    holidaysConfig,
+    workdaysConfig,
+    fieldsConfig,
+    cannedTextConfig,
+    tagsConfig,
+    feedbackConfig,
+    auditConfig,
+    servicesConfig,
+    serviceStatusConfig,
+    purchaseOrdersConfig,
+    downtimeConfig,
   ];
 
   for (const config of allConfigs) {
