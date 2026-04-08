@@ -242,7 +242,7 @@ docker run -d \
 docker compose up -d
 ```
 
-The container runs as a non-root user, exposes port 3000, and includes a health check at `/health`. Docker Compose also enforces a read-only filesystem, `no-new-privileges` security option, and resource limits (1 CPU / 512MB memory).
+The container runs as a non-root user, exposes port 3000, and includes a health check at `/health`. Docker Compose also enforces a read-only filesystem and `no-new-privileges` security option.
 
 ### Behind a Reverse Proxy
 
@@ -303,7 +303,7 @@ When running in HTTP mode, the server exposes:
 | `/mcp` | POST | Bearer | MCP message endpoint (initialize, tool calls) |
 | `/mcp` | GET | Bearer | SSE stream for server-sent events |
 | `/mcp` | DELETE | Bearer | Close an MCP session |
-| `/health` | GET | None | Health check and server status |
+| `/health` | GET | None | Health check (returns `{"status":"ok"}`) |
 | `/.well-known/oauth-authorization-server` | GET | None | OAuth server metadata (RFC 8414) |
 | `/.well-known/oauth-protected-resource` | GET | None | Protected resource metadata (RFC 9728) |
 | `/authorize` | GET | None | OAuth authorization endpoint |
@@ -352,7 +352,7 @@ The server implements multiple layers of protection against API overuse and tran
 
 ## Health Check
 
-The `/health` endpoint returns server status without requiring authentication:
+The `/health` endpoint returns a minimal status response without requiring authentication. No server details are exposed to prevent information disclosure.
 
 ```bash
 curl http://localhost:3000/health
@@ -360,14 +360,7 @@ curl http://localhost:3000/health
 
 ```json
 {
-  "status": "ok",
-  "server": "halo-itsm-mcp",
-  "version": "1.0.0",
-  "auth": "oauth-proxy",
-  "instance": "https://yourinstance.haloitsm.com",
-  "publicUrl": "https://your-public-url.com",
-  "activeSessions": 2,
-  "uptime": 3600.5
+  "status": "ok"
 }
 ```
 
@@ -458,7 +451,7 @@ halo-itsm-mcp/
                                          │  ├───────────────────┤  │
                                          │  │ Rate Limiter      │  │
                                          │  │ Circuit Breaker   │  │
-                                         │  │ Token Cache       │  │
+                                         │  │ Token Auto-Refresh │  │
                                          │  │ Auto-PKCE         │  │
                                          │  └───────────────────┘  │
                                          └─────────────────────────┘
@@ -508,7 +501,7 @@ Halo only supports Client Credentials grant. The MCP server handles the protocol
 Verify the MCP Endpoint URL includes `/mcp` at the end (e.g., `https://your-url.com/mcp`). Use the **PKCE** grant type in n8n's credential, not plain Authorization Code.
 
 **Token expires during long sessions**
-The server caches tokens and refreshes them 60 seconds before expiry. For OAuth proxy mode, the MCP client handles token refresh via the standard OAuth refresh flow.
+The server caches tokens and auto-refreshes them 60 seconds before expiry. In OAuth proxy mode, the server retains client credentials for the session lifetime and re-authenticates via Client Credentials grant automatically. Sessions survive indefinitely without manual re-authentication.
 
 ## Security
 
@@ -544,7 +537,7 @@ All HTTP responses include the following headers:
 
 ### Secret Handling
 
-- Client secrets captured during OAuth flows are stored with a 5-minute TTL and auto-cleaned
+- Client secrets captured during OAuth flows are bound to the MCP session and wiped from memory when the session disconnects (24-hour fallback TTL for orphaned entries)
 - The logger redacts 15+ sensitive field patterns (tokens, secrets, passwords, API keys) in both snake_case and camelCase
 - Error messages returned to clients are sanitized; detailed error information is only written to server-side logs
 - The `.env` file is excluded from both git and Docker builds
@@ -556,7 +549,6 @@ The Docker Compose configuration enforces:
 - **Non-root user** (`mcp:mcp`)
 - **Read-only filesystem** with tmpfs for `/tmp`
 - **`no-new-privileges`** security option
-- **Resource limits**: 1 CPU / 512MB memory
 - **Health check** at `/health`
 
 ### URL Validation
