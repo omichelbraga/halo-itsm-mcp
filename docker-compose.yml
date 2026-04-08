@@ -31,11 +31,3 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: 512M
-        reservations:
-          cpus: "0.25"
-          memory: 128M
