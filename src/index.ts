@@ -65,6 +65,8 @@ import {
   injectPkceIfMissing,
   injectPkceVerifier,
   getCredentialsForToken,
+  bindSessionCredentials,
+  cleanupSessionCredentials,
 } from "./auth/proxy-provider.js";
 import { buildAllTools } from "./tools/registry.js";
 import { buildResources } from "./resources/context.js";
@@ -266,7 +268,18 @@ async function startHttpWithOAuth(haloBaseUrl: string): Promise<void> {
     }
 
     return createHaloMcpServer(client, config);
-  }, authMiddleware as RequestHandler);
+  }, authMiddleware as RequestHandler,
+  // Bind session to credentials on init for cleanup tracking
+  (sessionId: string, req: Request) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      bindSessionCredentials(sessionId, authHeader.slice(7));
+    }
+  },
+  // Clean up credentials when session disconnects
+  (sessionId: string) => {
+    cleanupSessionCredentials(sessionId);
+  });
 
   // Plain HTTP - reverse proxy handles TLS
   app.listen(port, () => {
@@ -292,6 +305,8 @@ function setupMcpRoutes(
   transports: Record<string, StreamableHTTPServerTransport>,
   createServer: (req: Request, res: Response) => McpServer,
   authMiddleware?: RequestHandler,
+  onSessionInit?: (sessionId: string, req: Request) => void,
+  onSessionClose?: (sessionId: string) => void,
 ): void {
   const handlers = {
     post: async (req: Request, res: Response) => {
@@ -304,11 +319,13 @@ function setupMcpRoutes(
         } else if (isInitializeRequest(req.body)) {
           // Accept initialize requests even if a stale session ID is provided
           // (e.g., after server restart). This allows clients to reconnect.
+          const initReq = req; // Capture for the callback
           transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (sid: string) => {
               logger.info(`Session initialized: ${sid}`);
               transports[sid] = transport;
+              onSessionInit?.(sid, initReq);
             },
           });
           transport.onclose = () => {
@@ -316,6 +333,7 @@ function setupMcpRoutes(
             if (sid && transports[sid]) {
               logger.info(`Session closed: ${sid}`);
               delete transports[sid];
+              onSessionClose?.(sid);
             }
           };
           const server = createServer(req, res);

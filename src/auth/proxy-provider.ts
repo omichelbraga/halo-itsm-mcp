@@ -233,6 +233,9 @@ export function injectPkceVerifier() {
 
 // ==================== PROVIDER ====================
 
+// Maps MCP session IDs to their client_id for cleanup on disconnect
+const sessionCredentials = new Map<string, string>();
+
 /**
  * Look up stored credentials by Halo access token.
  * Used by the session factory to enable auto-refresh on HaloClient.
@@ -243,6 +246,49 @@ export function getCredentialsForToken(token: string): { clientId: string; clien
   const entry = capturedSecrets.get(mapping.clientId);
   if (!entry) return null;
   return { clientId: mapping.clientId, clientSecret: entry.secret };
+}
+
+/**
+ * Associate an MCP session with a client_id so credentials
+ * can be cleaned up when the session disconnects.
+ */
+export function bindSessionCredentials(sessionId: string, token: string): void {
+  const mapping = tokenToClientId.get(token);
+  if (mapping) {
+    sessionCredentials.set(sessionId, mapping.clientId);
+    logger.debug("Bound session to credentials for auto-refresh", { sessionId });
+  }
+}
+
+/**
+ * Clean up credentials when an MCP session disconnects.
+ * Only removes credentials if no other active session uses the same client_id.
+ */
+export function cleanupSessionCredentials(sessionId: string): void {
+  const clientId = sessionCredentials.get(sessionId);
+  sessionCredentials.delete(sessionId);
+
+  if (!clientId) return;
+
+  // Check if any other active session still uses these credentials
+  for (const [, cid] of sessionCredentials) {
+    if (cid === clientId) {
+      logger.debug("Credentials retained — other sessions still active", { clientId });
+      return;
+    }
+  }
+
+  // No other session needs these credentials — clean up
+  capturedSecrets.delete(clientId);
+
+  // Also clean up token mappings for this client
+  for (const [token, mapping] of tokenToClientId) {
+    if (mapping.clientId === clientId) {
+      tokenToClientId.delete(token);
+    }
+  }
+
+  logger.info("Session credentials cleaned up on disconnect", { clientId });
 }
 
 export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvider & { clientsStore: HaloClientsStore } {
