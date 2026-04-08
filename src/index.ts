@@ -64,6 +64,7 @@ import {
   captureRedirectUri,
   injectPkceIfMissing,
   injectPkceVerifier,
+  getCredentialsForToken,
 } from "./auth/proxy-provider.js";
 import { buildAllTools } from "./tools/registry.js";
 import { buildResources } from "./resources/context.js";
@@ -255,6 +256,13 @@ async function startHttpWithOAuth(haloBaseUrl: string): Promise<void> {
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
       client.setToken(token);
+
+      // Look up stored credentials for this token so the client can
+      // auto-refresh via Client Credentials when the token expires
+      const creds = getCredentialsForToken(token);
+      if (creds) {
+        client.setCredentials(creds.clientId, creds.clientSecret);
+      }
     }
 
     return createHaloMcpServer(client, config);

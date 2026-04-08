@@ -37,14 +37,40 @@ export class HaloAuth {
   }
 
   /**
+   * Set real Halo credentials for auto-refresh in OAuth proxy mode.
+   * When set, the auth module can fetch new tokens via Client Credentials
+   * when the initial token expires, instead of returning a stale static token.
+   */
+  setCredentials(clientId: string, clientSecret: string): void {
+    this.config = { ...this.config, clientId, clientSecret };
+    logger.debug("Credentials set for token auto-refresh");
+  }
+
+  /**
    * Get a valid access token, refreshing if necessary.
-   * If a static token is set (OAuth proxy mode), returns it directly.
+   * If a static token is set (OAuth proxy mode) and we have credentials,
+   * the static token is used initially but auto-refreshes via Client Credentials
+   * when it approaches expiry.
    * Deduplicates concurrent refresh requests.
    */
   async getToken(): Promise<string> {
-    // OAuth proxy mode: use the token from the MCP request
-    if (this.staticToken) {
+    // OAuth proxy mode with no credentials: return static token as-is
+    if (this.staticToken && this.config.clientId === "oauth-proxy") {
       return this.staticToken;
+    }
+
+    // If we have a static token but also real credentials, treat the
+    // static token as a cached token so it can be refreshed when expired
+    if (this.staticToken && this.config.clientId !== "oauth-proxy") {
+      // Seed the cache with the static token (assume ~1 hour validity)
+      if (!this.cachedToken) {
+        this.cachedToken = {
+          accessToken: this.staticToken,
+          expiresAt: Date.now() + 3500 * 1000, // ~58 minutes, will refresh before real expiry
+        };
+        logger.info("Seeded token cache from OAuth proxy token (auto-refresh enabled)");
+      }
+      this.staticToken = null; // Switch to managed mode
     }
 
     if (this.cachedToken && Date.now() < this.cachedToken.expiresAt - TOKEN_REFRESH_BUFFER_MS) {

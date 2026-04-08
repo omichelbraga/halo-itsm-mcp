@@ -58,6 +58,14 @@ export class HaloClient {
   }
 
   /**
+   * Set real Halo credentials so the client can auto-refresh tokens
+   * via Client Credentials grant when the initial token expires.
+   */
+  setCredentials(clientId: string, clientSecret: string): void {
+    this.auth.setCredentials(clientId, clientSecret);
+  }
+
+  /**
    * GET request to a Halo API collection endpoint.
    */
   async list<T = unknown>(path: string, params?: Record<string, unknown>): Promise<ApiResponse<T>> {

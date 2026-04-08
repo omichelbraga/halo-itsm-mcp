@@ -40,8 +40,13 @@ interface PendingAuthorization {
 
 // ==================== IN-MEMORY STORES ====================
 
-const STORE_TTL_MS = 5 * 60 * 1000; // 5 minutes for all transient stores
+const STORE_TTL_MS = 5 * 60 * 1000; // 5 minutes for auth codes and PKCE
+const CRED_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours for session credentials (survives token refreshes)
 const MAX_PENDING_CODES = 1000;       // Hard cap to prevent memory exhaustion
+
+// Maps Halo access tokens to the client_id that obtained them.
+// This allows the session factory to look up credentials for auto-refresh.
+const tokenToClientId = new Map<string, { clientId: string; createdAt: number }>();
 
 // Pending authorization codes (short-lived, 5 min TTL)
 const pendingCodes = new Map<string, PendingAuthorization>();
@@ -67,7 +72,7 @@ setInterval(() => {
   }
 
   for (const [id, entry] of capturedSecrets) {
-    if (now - entry.createdAt > STORE_TTL_MS) {
+    if (now - entry.createdAt > CRED_TTL_MS) {
       capturedSecrets.delete(id);
     }
   }
@@ -75,6 +80,12 @@ setInterval(() => {
   for (const [id, entry] of generatedPkce) {
     if (now - entry.createdAt > STORE_TTL_MS) {
       generatedPkce.delete(id);
+    }
+  }
+
+  for (const [token, entry] of tokenToClientId) {
+    if (now - entry.createdAt > CRED_TTL_MS) {
+      tokenToClientId.delete(token);
     }
   }
 }, 60_000);
@@ -222,6 +233,18 @@ export function injectPkceVerifier() {
 
 // ==================== PROVIDER ====================
 
+/**
+ * Look up stored credentials by Halo access token.
+ * Used by the session factory to enable auto-refresh on HaloClient.
+ */
+export function getCredentialsForToken(token: string): { clientId: string; clientSecret: string } | null {
+  const mapping = tokenToClientId.get(token);
+  if (!mapping) return null;
+  const entry = capturedSecrets.get(mapping.clientId);
+  if (!entry) return null;
+  return { clientId: mapping.clientId, clientSecret: entry.secret };
+}
+
 export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvider & { clientsStore: HaloClientsStore } {
   const tokenUrl = `${haloBaseUrl}/auth/token`;
   const clientsStore = new HaloClientsStore();
@@ -311,8 +334,7 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
       const captured = capturedSecrets.get(clientId);
       const clientSecret = captured?.secret;
 
-      // Clean up the captured secret immediately after retrieval
-      capturedSecrets.delete(clientId);
+      // Keep the secret for token refresh — it will be cleaned up by TTL
 
       if (!clientSecret) {
         logger.error("No client_secret captured for token exchange", { clientId });
@@ -365,6 +387,9 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
         clientId,
         expiresIn: tokenData.expires_in,
       });
+
+      // Map this token to the client_id so sessions can look up credentials for auto-refresh
+      tokenToClientId.set(tokenData.access_token as string, { clientId, createdAt: Date.now() });
 
       return {
         access_token: tokenData.access_token as string,
