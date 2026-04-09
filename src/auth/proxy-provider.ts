@@ -261,34 +261,21 @@ export function bindSessionCredentials(sessionId: string, token: string): void {
 }
 
 /**
- * Clean up credentials when an MCP session disconnects.
- * Only removes credentials if no other active session uses the same client_id.
+ * Clean up session tracking when an MCP session disconnects.
+ *
+ * IMPORTANT: We intentionally do NOT delete capturedSecrets or tokenToClientId
+ * here. Claude (and other clients) frequently close and reopen sessions during
+ * normal operation (e.g., reconnecting after idle, token refresh). Deleting
+ * credentials on disconnect would break auto-refresh for the next session.
+ * Credentials are protected by the 24h TTL cleanup instead.
  */
 export function cleanupSessionCredentials(sessionId: string): void {
   const clientId = sessionCredentials.get(sessionId);
   sessionCredentials.delete(sessionId);
 
-  if (!clientId) return;
-
-  // Check if any other active session still uses these credentials
-  for (const [, cid] of sessionCredentials) {
-    if (cid === clientId) {
-      logger.debug("Credentials retained — other sessions still active", { clientId });
-      return;
-    }
+  if (clientId) {
+    logger.debug("Session tracking removed (credentials retained for reconnect)", { sessionId, clientId });
   }
-
-  // No other session needs these credentials — clean up
-  capturedSecrets.delete(clientId);
-
-  // Also clean up token mappings for this client
-  for (const [token, mapping] of tokenToClientId) {
-    if (mapping.clientId === clientId) {
-      tokenToClientId.delete(token);
-    }
-  }
-
-  logger.info("Session credentials cleaned up on disconnect", { clientId });
 }
 
 export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvider & { clientsStore: HaloClientsStore } {
@@ -481,8 +468,12 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
 
         if (response.ok) {
           const tokenData = await response.json() as Record<string, unknown>;
+          const newToken = tokenData.access_token as string;
+          // Map new token to client_id so future refreshes can find credentials
+          tokenToClientId.set(newToken, { clientId: client.client_id, createdAt: Date.now() });
+          logger.info("Token refreshed via refresh_token grant", { clientId: client.client_id });
           return {
-            access_token: tokenData.access_token as string,
+            access_token: newToken,
             token_type: (tokenData.token_type as string) || "Bearer",
             expires_in: tokenData.expires_in as number | undefined,
             refresh_token: tokenData.refresh_token as string | undefined,
@@ -491,7 +482,7 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
         }
 
         // Refresh failed, try Client Credentials as fallback
-        logger.warn("Refresh token failed, falling back to Client Credentials");
+        logger.warn("Refresh token failed, falling back to Client Credentials", { clientId: client.client_id });
 
         const fallbackBody = new URLSearchParams({
           grant_type: "client_credentials",
@@ -513,14 +504,30 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
 
         if (fallbackResponse.ok) {
           const tokenData = await fallbackResponse.json() as Record<string, unknown>;
+          const newToken = tokenData.access_token as string;
+          // Map new token to client_id so future refreshes can find credentials
+          tokenToClientId.set(newToken, { clientId: client.client_id, createdAt: Date.now() });
+          logger.info("Token refreshed via Client Credentials fallback", { clientId: client.client_id });
           return {
-            access_token: tokenData.access_token as string,
+            access_token: newToken,
             token_type: (tokenData.token_type as string) || "Bearer",
             expires_in: tokenData.expires_in as number | undefined,
             refresh_token: tokenData.refresh_token as string | undefined,
             scope: (tokenData.scope as string) || "all",
           };
         }
+
+        const errorText = await fallbackResponse.text();
+        logger.error("Client Credentials fallback also failed", {
+          clientId: client.client_id,
+          status: fallbackResponse.status,
+          error: errorText,
+        });
+      } else {
+        logger.error("No credentials found for token refresh", {
+          clientId: client.client_id,
+          hasCapturedSecret: capturedSecrets.has(client.client_id),
+        });
       }
 
       throw new Error("Token refresh failed and no client credentials available for fallback");
@@ -555,9 +562,12 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
       const agentData = await response.json() as Record<string, unknown>;
       logger.info("Token verified for agent", { agent: agentData.name as string });
 
+      // Return the real client_id so the SDK passes it to exchangeRefreshToken,
+      // allowing us to look up credentials in capturedSecrets for auto-refresh.
+      const mapping = tokenToClientId.get(token);
       return {
         token,
-        clientId: "halo-agent",
+        clientId: mapping?.clientId ?? "halo-agent",
         scopes: ["all"],
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
       };
