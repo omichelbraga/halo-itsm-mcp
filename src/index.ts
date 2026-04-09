@@ -4,7 +4,7 @@
  * Halo ITSM MCP Server
  *
  * Complete MCP server for Halo ITSM platform.
- * Exposes 85 tools across 21 resource domains.
+ * Exposes 172 tools across 43 resource domains.
  *
  * Transport modes:
  *   - stdio  (default): For Claude Desktop / Claude Code local use

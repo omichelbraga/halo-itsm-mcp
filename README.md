@@ -14,7 +14,7 @@ Built by the City of San Marcos, CA - IT Division.
 - **Rate limiting**: 700 requests per 5-minute sliding window with 80% usage warnings
 - **Circuit breaker**: pauses requests after 5 consecutive failures (30-second cooldown)
 - **Retry logic**: exponential backoff with jitter for 429 and 5xx responses
-- **Docker-ready**: multi-stage build, non-root user, health check endpoint, read-only filesystem, resource limits
+- **Docker-ready**: multi-stage build, non-root user, health check endpoint, read-only filesystem
 - **Reverse proxy compatible**: runs plain HTTP internally, TLS handled externally
 - **Security hardened**: security headers on all responses, input size validation, fetch timeouts, error sanitization, secret redaction in logs
 
@@ -537,7 +537,7 @@ All HTTP responses include the following headers:
 
 ### Secret Handling
 
-- Client secrets captured during OAuth flows are bound to the MCP session and wiped from memory when the session disconnects (24-hour fallback TTL for orphaned entries)
+- Client secrets captured during OAuth flows are retained in memory for the duration of the session to support automatic token refresh, and expire after a 24-hour TTL
 - The logger redacts 15+ sensitive field patterns (tokens, secrets, passwords, API keys) in both snake_case and camelCase
 - Error messages returned to clients are sanitized; detailed error information is only written to server-side logs
 - The `.env` file is excluded from both git and Docker builds
