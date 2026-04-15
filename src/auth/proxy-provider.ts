@@ -512,7 +512,10 @@ export function createHaloOAuthProvider(haloBaseUrl: string): OAuthServerProvide
             access_token: newToken,
             token_type: (tokenData.token_type as string) || "Bearer",
             expires_in: tokenData.expires_in as number | undefined,
-            refresh_token: tokenData.refresh_token as string | undefined,
+            // Client Credentials grant doesn't issue refresh tokens; echo the original
+            // refresh_token back so OAuth clients (e.g. n8n) can keep using it. The
+            // proxy will keep falling back to CC for them on each refresh.
+            refresh_token: (tokenData.refresh_token as string | undefined) ?? refreshToken,
             scope: (tokenData.scope as string) || "all",
           };
         }
