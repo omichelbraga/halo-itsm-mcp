@@ -127,7 +127,10 @@ export class HaloClient {
       for (const [key, value] of Object.entries(options.params)) {
         if (value === undefined || value === null || value === "") continue;
         if (Array.isArray(value)) {
-          url.searchParams.set(key, JSON.stringify(value));
+          // Halo expects CSV for primitive-array filters (team, agent, status, ...)
+          // and JSON for object-array params (advanced_search).
+          const isObjectArray = value.length > 0 && typeof value[0] === "object" && value[0] !== null;
+          url.searchParams.set(key, isObjectArray ? JSON.stringify(value) : value.join(","));
         } else {
           url.searchParams.set(key, String(value));
         }
