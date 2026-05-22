@@ -341,9 +341,16 @@ function setupMcpRoutes(
           await transport.handleRequest(req, res, req.body);
           return;
         } else {
-          res.status(400).json({
+          // Per MCP spec, 404 tells the client the session is gone and it
+          // should re-initialize. 400 leaves clients stuck on stale IDs
+          // across server restarts/redeploys.
+          const status = sessionId ? 404 : 400;
+          const message = sessionId
+            ? "Session not found, please re-initialize"
+            : "Bad Request: No valid session ID";
+          res.status(status).json({
             jsonrpc: "2.0",
-            error: { code: -32000, message: "Bad Request: No valid session ID" },
+            error: { code: -32000, message },
             id: null,
           });
           return;
@@ -360,7 +367,7 @@ function setupMcpRoutes(
     get: async (req: Request, res: Response) => {
       const sessionId = req.headers["mcp-session-id"] as string | undefined;
       if (!sessionId || !transports[sessionId]) {
-        res.status(400).send("Invalid or missing session ID");
+        res.status(sessionId ? 404 : 400).send("Invalid or missing session ID");
         return;
       }
       await transports[sessionId].handleRequest(req, res);
@@ -369,7 +376,7 @@ function setupMcpRoutes(
     delete: async (req: Request, res: Response) => {
       const sessionId = req.headers["mcp-session-id"] as string | undefined;
       if (!sessionId || !transports[sessionId]) {
-        res.status(400).send("Invalid or missing session ID");
+        res.status(sessionId ? 404 : 400).send("Invalid or missing session ID");
         return;
       }
       await transports[sessionId].handleRequest(req, res);
