@@ -1,0 +1,44 @@
+# ORION HaloITSM MCP — Cloudflare Workers
+# ADVNT-585 / L3b CLOUD
+#
+# Secrets (never in this file — set per environment):
+#   wrangler secret put ORION_SUPABASE_URL --env staging
+#   wrangler secret put ORION_SUPABASE_SERVICE_ROLE_KEY --env staging
+#   wrangler secret put JWT_SECRET --env staging
+#   wrangler secret put MCP_PUBLIC_URL --env staging
+#   (repeat with --env production)
+#
+# Deploy:
+#   wrangler deploy --env staging
+#   wrangler deploy --env production
+
+name = "advnt-haloitsm-mcp"
+main = "src/worker.ts"
+compatibility_date = "2025-12-02"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+LOG_LEVEL = "info"
+NODE_ENV = "production"
+
+# ── Staging ───────────────────────────────────────────────────────────────────
+[env.staging]
+name = "advnt-haloitsm-mcp-staging"
+routes = [
+  { pattern = "halo-mcp-staging.advnt.ai/*", zone_name = "advnt.ai" }
+]
+
+[env.staging.vars]
+LOG_LEVEL = "debug"
+NODE_ENV = "staging"
+
+# ── Production ────────────────────────────────────────────────────────────────
+[env.production]
+name = "advnt-haloitsm-mcp-production"
+routes = [
+  { pattern = "halo-mcp.advnt.ai/*", zone_name = "advnt.ai" }
+]
+
+[env.production.vars]
+LOG_LEVEL = "info"
+NODE_ENV = "production"

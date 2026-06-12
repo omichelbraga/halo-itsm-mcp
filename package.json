@@ -1,47 +1,45 @@
 {
-  "name": "halo-itsm-mcp-server",
-  "version": "1.0.0",
-  "description": "MCP server for Halo ITSM - complete API integration for AI assistants",
+  "name": "advnt-haloitsm-mcp",
+  "version": "0.1.0",
+  "description": "ADVNT HaloITSM MCP — governed, multi-tenant MCP connector for HaloITSM/HaloPSA. ADVNT-585 / L3b CLOUD.",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "bin": {
-    "halo-itsm-mcp": "dist/index.js"
+    "advnt-haloitsm-mcp": "dist/npx-client.js"
   },
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
-    "clean": "rm -rf dist",
-    "prepare": "npm run build"
+    "build:worker": "wrangler build",
+    "dev": "tsx watch src/index.ts",
+    "start": "node --env-file=.env dist/index.js",
+    "test:connection": "tsx scripts/test-connection.ts",
+    "seed:policies": "tsx scripts/seed-tool-policies.ts",
+    "typecheck": "tsc --noEmit"
   },
-  "keywords": [
-    "mcp",
-    "halo",
-    "itsm",
-    "helpdesk",
-    "service-desk",
-    "ai"
-  ],
-  "author": "City of San Marcos, CA - IT Division",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/omichelbraga/halo-itsm-mcp.git"
-  },
-  "bugs": {
-    "url": "https://github.com/omichelbraga/halo-itsm-mcp/issues"
-  },
-  "homepage": "https://github.com/omichelbraga/halo-itsm-mcp#readme",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
-    "zod": "^3.24.4"
+    "@advnt/mcp-orion": "file:../advnt-mcp-orion",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^17.4.2",
+    "express": "^4.18.2",
+    "jose": "^5.2.0",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.7.0"
+    "@cloudflare/workers-types": "^4.20241205.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^3.114.17"
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "files": [
+    "dist/",
+    "config/"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }
