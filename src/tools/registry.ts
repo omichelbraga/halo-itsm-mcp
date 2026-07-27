@@ -8,7 +8,7 @@ import { HaloClient } from "../client/halo-client.js";
 import { createResourceTools, ToolDefinition } from "./resource-factory.js";
 
 // Original resource configs
-import { ticketsConfig } from "./resources/tickets.js";
+import { createTicketsConfig } from "./resources/tickets.js";
 import { actionsConfig } from "./resources/actions.js";
 import { createAgentsConfig } from "./resources/agents.js";
 import { assetsConfig } from "./resources/assets.js";
@@ -66,6 +66,8 @@ export function buildAllTools(client: HaloClient): Map<string, ToolDefinition> {
 
   // Agents needs the client reference for the custom /me tool
   const agentsConfig = createAgentsConfig(client);
+  // Tickets needs the client reference for the custom SLA-detail tool
+  const ticketsConfig = createTicketsConfig(client);
 
   const allConfigs = [
     // Core ITSM

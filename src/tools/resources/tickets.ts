@@ -4,9 +4,69 @@
  */
 
 import { z } from "zod";
-import { ResourceConfig } from "../resource-factory.js";
+import { ResourceConfig, ToolDefinition } from "../resource-factory.js";
+import { HaloClient } from "../../client/halo-client.js";
 
-export const ticketsConfig: ResourceConfig = {
+// Curated subset of the ~1,000-field ticket object relevant to SLA timing and
+// satisfaction. Fetching the full record for this data blows past output
+// limits fast (a full ticket dump routinely exceeds 50K+ chars); this keeps
+// the response small enough to aggregate across dozens of tickets in one pass.
+const SLA_DETAIL_FIELDS = [
+  // Identity
+  "id", "summary", "agent_id", "status_id",
+  // First response
+  "dateoccurred", "first_responsedate", "first_responsetime",
+  "respondbydate", "respondbydateadjusted", "first_respond_by_date",
+  "sla_first_response_state", "slaresponsestate", "responsedate", "responsetime",
+  // Resolution
+  "dateclosed", "date_fully_closed", "fixbydate", "fixbydateadjusted",
+  "timetaken", "elapsed_response_hours", "elapsed_resolution_hours",
+  "slastate", "agreedcleared",
+  // SLA metadata
+  "sla_id", "sla_name", "slapercused", "slatimeleft", "slatimeelapsed", "excludefromsla",
+  // Satisfaction
+  "satisfactionlevel", "satisfactioncomment", "ai_satisfaction_level", "ai_survey_score", "thirdpartyreviewscore",
+];
+
+function createSlaDetailTool(client: HaloClient): ToolDefinition {
+  return {
+    name: "halo_tickets_sla_detail",
+    description:
+      "Get SLA, first-response, resolution-time, and satisfaction detail for a single ticket by ID. " +
+      "Returns a curated subset of timing/SLA fields rather than the full ticket object (which has 1,000+ " +
+      "fields and routinely exceeds output limits). Use this to compute MTFR/MTTR/SLA%/satisfaction per " +
+      "ticket or aggregated across a set of tickets. Halo permission: User, Ticket Read.",
+    inputSchema: z.object({
+      id: z.number().int().describe("The ticket ID"),
+    }),
+    handler: async (args: Record<string, unknown>) => {
+      try {
+        const id = args.id as number;
+        const response = await client.get("/Tickets", id, { includedetails: true });
+        if (!response.ok) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ error: `Failed to get ticket #${id}: HTTP ${response.status}` }) }],
+            isError: true,
+          };
+        }
+        const full = response.data as Record<string, unknown>;
+        const detail: Record<string, unknown> = {};
+        for (const field of SLA_DETAIL_FIELDS) {
+          if (field in full) detail[field] = full[field];
+        }
+        return { content: [{ type: "text" as const, text: JSON.stringify(detail, null, 2) }] };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: (err as Error).message }) }],
+          isError: true,
+        };
+      }
+    },
+  };
+}
+
+export function createTicketsConfig(client: HaloClient): ResourceConfig {
+  return {
   name: "tickets",
   apiPath: "/Tickets",
   description: "ticket",
@@ -108,4 +168,6 @@ export const ticketsConfig: ResourceConfig = {
   deleteParams: {
     reason: z.string().max(2000).optional().describe("Reason for ticket deletion"),
   },
-};
+  customTools: [createSlaDetailTool(client)],
+  };
+}
