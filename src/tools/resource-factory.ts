@@ -125,9 +125,16 @@ export function createResourceTools(config: ResourceConfig, client: HaloClient):
             return errorResult(`Failed to list ${config.description}: HTTP ${response.status}`);
           }
 
+          // Some Halo endpoints (Priority, SLA, Status, TicketType, Team, Category)
+          // don't support pagination at all and return a bare array instead of the
+          // usual { record_count, records } envelope. Fall back to the array's own
+          // length so total_count doesn't silently report 0 for those endpoints.
+          const isBareArray = Array.isArray(response.data);
           const data = response.data as Record<string, unknown>;
-          const recordCount = (data.record_count as number) || 0;
-          const records = (data.records as unknown[]) || data;
+          const records = isBareArray ? (response.data as unknown[]) : ((data.records as unknown[]) || data);
+          const recordCount = isBareArray
+            ? (response.data as unknown[]).length
+            : (data.record_count as number) ?? (Array.isArray(records) ? records.length : 0);
 
           const pagination = buildPaginationMeta(
             recordCount,
